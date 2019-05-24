@@ -8,7 +8,7 @@ from conans.errors import ConanInvalidConfiguration
 
 class GTestConan(ConanFile):
     name = "gtest"
-    version = "1.8.1"
+    version = "1.9.0-master.20190523"
     description = "Google's C++ test framework"
     url = "http://github.com/bincrafters/conan-gtest"
     homepage = "https://github.com/google/googletest"
@@ -16,22 +16,16 @@ class GTestConan(ConanFile):
     license = "BSD-3-Clause"
     topics = ("conan", "gtest", "testing", "google-testing", "unit-test")
     exports = ["LICENSE.md"]
-    exports_sources = ["CMakeLists.txt", "FindGTest.cmake.in", "FindGMock.cmake.in", "gtest.patch"]
+    exports_sources = ["CMakeLists.txt"]
     generators = "cmake"
     settings = "os", "arch", "compiler", "build_type"
-    options = {"shared": [True, False], "build_gmock": [True, False], "fPIC": [True, False], "no_main": [True, False], "debug_postfix": "ANY", "hide_symbols": [True, False]}
-    default_options = {"shared": False, "build_gmock": True, "fPIC": True, "no_main": False, "debug_postfix": 'd', "hide_symbols": False}
+    options = {"shared": [True, False], "build_gmock": [True, False], "fPIC": [True, False], "no_main": [True, False], "hide_symbols": [True, False]}
+    default_options = {"shared": False, "build_gmock": True, "fPIC": True, "no_main": False, "hide_symbols": False}
     _source_subfolder = "source_subfolder"
-
-    @property
-    def _postfix(self):
-        return self.options.debug_postfix if self.settings.build_type == "Debug" else ""
 
     def config_options(self):
         if self.settings.os == "Windows":
             del self.options.fPIC
-        if self.settings.build_type != "Debug":
-            del self.options.debug_postfix
 
     def configure(self):
         if self.settings.os == "Windows":
@@ -39,17 +33,16 @@ class GTestConan(ConanFile):
                 raise ConanInvalidConfiguration("Google Test {} does not support Visual Studio <= 12".format(self.version))
 
     def source(self):
-        sha256 = "9bf1fe5182a604b4135edc1a425ae356c9ad15e9b23f9f12a02e80184c3a249c"
-        tools.get("{0}/archive/release-{1}.tar.gz".format(self.homepage, self.version), sha256=sha256)
-        extracted_dir = "googletest-release-" + self.version
+        commit = "88f0493098c8d9fd0f096c2158a0e56deb952d53"
+        sha256 = "755569296877d2f6ee82ab6d2027fee48d5e44aa1521c01038a112348ff1963e"
+        tools.get("{0}/archive/{1}.tar.gz".format(self.homepage, commit), sha256=sha256)
+        extracted_dir = "googletest-" + commit
         os.rename(extracted_dir, self._source_subfolder)
 
     def _configure_cmake(self):
         cmake = CMake(self)
-        if self.settings.build_type == "Debug":
-            cmake.definitions["CUSTOM_DEBUG_POSTFIX"] = self.options.debug_postfix
         if self.settings.os == "Windows" and self.settings.get_safe("compiler.runtime"):
-            cmake.definitions["gtest_force_shared_crt"] = "MD" in str(self.settings.compiler.runtime)           
+            cmake.definitions["gtest_force_shared_crt"] = "MD" in str(self.settings.compiler.runtime)
         cmake.definitions["BUILD_GMOCK"] = self.options.build_gmock
         cmake.definitions["GTEST_NO_MAIN"] = self.options.no_main
         if self.settings.os == "Windows" and self.settings.compiler == "gcc":
@@ -59,7 +52,6 @@ class GTestConan(ConanFile):
         return cmake
 
     def build(self):
-        tools.patch(base_path=self._source_subfolder, patch_file="gtest.patch")
         cmake = self._configure_cmake()
         cmake.build()
 
@@ -73,12 +65,7 @@ class GTestConan(ConanFile):
         del self.info.options.no_main
 
     def package_info(self):
-        if self.options.build_gmock:
-            gmock_libs = ['gmock', 'gtest'] if self.options.no_main else ['gmock_main', 'gmock', 'gtest']
-            self.cpp_info.libs = ["{}{}".format(lib, self._postfix) for lib in gmock_libs]
-        else:
-            gtest_libs = ['gtest'] if self.options.no_main else ['gtest_main' , 'gtest']
-            self.cpp_info.libs = ["{}{}".format(lib, self._postfix) for lib in gtest_libs]
+        self.cpp_info.libs = tools.collect_libs(self)
 
         if self.settings.os == "Linux":
             self.cpp_info.libs.append("pthread")
